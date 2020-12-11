@@ -1,6 +1,13 @@
+/*********************************************************
+ * Trabalho Prático - Redes de Computadores
+ * Professor: Renato Ishii
+ * Aluno: Ian Haranaka | RGA: 2018.1904.009-7
+ * Comando de compilação: g++ cliente.cpp -o cliente -Wall
+ *********************************************************/
+
 #include <iostream>
-#include <map>
 #include <string>
+#include <sstream>
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,10 +15,6 @@
 #include <arpa/inet.h>
 
 #define PORT 8080
-
-enum Command {
-  make_dir, remove_dir, ls, send_file, remove_file
-};
 
 class TCP_Client {
  private:
@@ -52,59 +55,34 @@ class TCP_Client {
     }
     std::cout << "Connected to Server\n";
   }
+
+  int GetSocket()
+  {
+    return client_fd;
+  }
+
+  void SendCommand(const std::string& msg)
+  {
+    send(client_fd, msg.data(), msg.size(), 0);
+  }
 };
 
 int main()
 {
-  Command command;
-  std::string _command;
-  std::map<std::string, Command> str_to_command = {
-    {"make_dir", make_dir},
-    {"remove_dir", remove_dir},
-    {"ls", ls},
-    {"send_file", send_file},
-    {"remove_file", remove_file}
-  };
-
   TCP_Client client;
   client.Connect();
 
   bool exit = false;
-  std::string in, name;
+  std::string in, command;
   while (!exit)
   {
     std::getline(std::cin, in);
     std::stringstream ss(in);
-    ss >> _command;
-    command = str_to_command[_command];
+    ss >> command;
 
-    switch(command)
-    {
-      case make_dir:
-        ss >> name;
-        break;
-
-      case remove_dir:
-        ss >> name;
-        break;
-
-      case ls:
-        break;
-
-      case send_file:
-        break;
-
-      case remove_file:
-        ss >> name;
-        break;
-
-      case exit:
-        exit = true;
-        break;
-
-      default:
-        break;
-    }
+    client.SendCommand(in);
+    if (command == "quit")
+      exit = true;
   }
 
   return 0;
