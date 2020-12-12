@@ -6,22 +6,17 @@
  ***********************************************************/
 
 #include <iostream>
-#include <map>
+#include <sstream>
 #include <string>
 #include <cstring>
-#include <sstream>
 
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PORT 8080
-#define MSG_MAX_SIZE 100
-
-enum Command {
-  make_dir, remove_dir, ls, send_file, remove_file
-};
+#define PORT 21
+#define MSG_MAX_SIZE 1000
 
 // Reference: https://www.bogotobogo.com/cplusplus/sockets_server_client.php
 // https://www.geeksforgeeks.org/socket-programming-cc/
@@ -31,8 +26,10 @@ class TCP_Server {
  private:
   int server_fd, client_fd;
   struct sockaddr_in server_addr, client_addr;
-  int optval = 1;
   char buffer[MSG_MAX_SIZE];
+  std::string msg = "";
+
+  FILE *fpipe;
 
   void SetAddr()
   {
@@ -43,7 +40,8 @@ class TCP_Server {
 
   void SetSockOpt()
   {
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)))
+    int optval = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &optval, sizeof(optval)))
     {
       perror("Error in setsockopt");
       exit(EXIT_FAILURE);
@@ -94,65 +92,179 @@ class TCP_Server {
     std::cout << "Connection established\n";
   }
 
-  std::string Receive()
+  void Send(const std::string& message)
   {
-    recv(client_fd, buffer, sizeof(buffer), 0);
-    std::string msg(buffer);
+    send(client_fd, message.data(), message.size(), 0);
+  }
+
+  // Salva a mensagem em uma string e retorna o tamanho da mensagem
+  int Receive()
+  {
+    int msg_size = recv(client_fd, buffer, sizeof(buffer), 0);
+    msg = buffer;
     memset(buffer, 0, sizeof(buffer));
+    return msg_size;
+  }
+
+  std::string GetMessage()
+  {
     return msg;
+  }
+
+  void MakeDir(const std::string &name)
+  {
+    std::string command = "mkdir ../servidor/";
+
+    if (name.empty())
+      Send("Incomplete command");
+    else
+    {
+      fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
+      if (fpipe)
+      {
+        while (!feof(fpipe))
+          fgets(buffer, sizeof(buffer), fpipe);
+
+        if (strlen(buffer) == 0)
+          Send("Directory successfully created");
+        else
+        {
+          buffer[strlen(buffer) - 1] = '\0';
+          std::string output(buffer);
+          Send(output);
+        }
+
+        memset(buffer, 0, sizeof(buffer));
+        pclose(fpipe);
+      }
+    }
+  }
+
+  void RemoveDir(const std::string &name)
+  {
+    std::string command = "rm -r ../servidor/";
+
+    if (name.empty())
+      Send("Incomplete command");
+    else
+    {
+      fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
+      if (fpipe)
+      {
+        while (!feof(fpipe))
+          fgets(buffer, sizeof(buffer), fpipe);
+
+        if (strlen(buffer) == 0)
+          Send("Directory successfully removed");
+        else
+        {
+          buffer[strlen(buffer) - 1] = '\0';
+          std::string output(buffer);
+          Send(output);
+        }
+
+        memset(buffer, 0, sizeof(buffer));
+        pclose(fpipe);
+      }
+    }
+  }
+
+  void List()
+  {
+    char temp_buffer[100] = "";
+    std::string command = "ls ../servidor";
+
+    fpipe = (FILE*) popen(command.c_str(), "r");
+    if (fpipe)
+    {
+      while (!feof(fpipe))
+      {
+        strcat(buffer, temp_buffer);
+        fgets(temp_buffer, sizeof(temp_buffer), fpipe);
+        buffer[strlen(buffer) - 1] = ' ';
+      }
+
+      buffer[strlen(buffer) - 1] = '\0';
+      std::string output(buffer);
+      Send(output);
+
+      memset(buffer, 0, sizeof(buffer));
+      pclose(fpipe);
+    }
+  }
+
+  void RemoveFile(const std::string &name)
+  {
+    std::string command = "rm ../servidor/";
+    if (name.empty())
+      Send("Incomplete command");
+    else
+    {
+      fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
+      if (fpipe)
+      {
+        while (!feof(fpipe))
+          fgets(buffer, sizeof(buffer), fpipe);
+
+        if (strlen(buffer) == 0)
+          Send(name + " successfully removed");
+        else
+        {
+          buffer[strlen(buffer) - 1] = '\0';
+          std::string output(buffer);
+          Send(output);
+        }
+
+        memset(buffer, 0, sizeof(buffer));
+        pclose(fpipe);
+      }
+    }
   }
 };
 
 int main()
 {
-  Command command;
-  std::string in, _command;
-  std::map<std::string, Command> str_to_command = {
-    {"make_dir", make_dir},
-    {"remove_dir", remove_dir},
-    {"ls", ls},
-    {"send_file", send_file},
-    {"remove_file", remove_file}
-  };
+  std::string in, command, name;
 
   TCP_Server server;
   server.Bind();
   server.Listen();
   server.Accept();
 
-  while (true)
+  // Enquanto o cliente estiver conectado
+  while (server.Receive())
   {
-    in = server.Receive();
-    std::stringstream ss(in);
-    ss >> _command;
-    command = str_to_command[_command];
+    std::stringstream ss(server.GetMessage());
+    ss >> command;
 
-    switch(command)
+    if(command == "make_dir")
     {
-      case make_dir:
-        std::cout << "make_dir\n";
-        break;
-
-      case remove_dir:
-        std::cout << "remove_dir\n";
-        break;
-
-      case ls:
-        std::cout << "ls\n";
-        break;
-
-      case send_file:
-        std::cout << "send_file\n";
-        break;
-
-      case remove_file:
-        std::cout << "remove_file\n";
-        break;
-
-      default:
-        break;
+      ss >> name;
+      server.MakeDir(name);
     }
+    else if (command == "remove_dir")
+    {
+      ss >> name;
+      server.RemoveDir(name);
+    }
+    else if (command == "ls")
+    {
+      server.List();
+    }
+    else if (command == "send_file")
+    {
+      std::cout << "send_file\n";
+    }
+    else if (command == "remove_file")
+    {
+      ss >> name;
+      server.RemoveFile(name);
+    }
+    else
+      server.Send("Unknown command");
   }
+
+  std::cout << "Connection broken" << std::endl;
 
   return 0;
 }

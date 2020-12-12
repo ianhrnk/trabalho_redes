@@ -8,18 +8,21 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <cstring>
 
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PORT 8080
+#define PORT 21
+#define MSG_MAX_SIZE 1000
 
 class TCP_Client {
  private:
   int client_fd;
   struct sockaddr_in server_addr;
+  char buffer[MSG_MAX_SIZE];
 
   void SetServerAddr()
   {
@@ -56,14 +59,17 @@ class TCP_Client {
     std::cout << "Connected to Server\n";
   }
 
-  int GetSocket()
-  {
-    return client_fd;
-  }
-
   void SendCommand(const std::string& msg)
   {
     send(client_fd, msg.data(), msg.size(), 0);
+  }
+
+  std::string Receive()
+  {
+    recv(client_fd, buffer, sizeof(buffer), 0);
+    std::string msg(buffer);
+    memset(buffer, 0, sizeof(buffer));
+    return msg;
   }
 };
 
@@ -80,9 +86,13 @@ int main()
     std::stringstream ss(in);
     ss >> command;
 
-    client.SendCommand(in);
     if (command == "quit")
       exit = true;
+    else
+    {
+      client.SendCommand(in);
+      std::cout << client.Receive() << std::endl;
+    }
   }
 
   return 0;
