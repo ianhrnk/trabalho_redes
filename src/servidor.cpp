@@ -76,8 +76,8 @@ class TCP_Server {
 
   void Listen()
   {
-    if (listen(server_fd, 3))
-      std::cout << "Listening...\n";
+    std::cout << "Listening...\n";
+    listen(server_fd, 3);
   }
 
   void Accept()
