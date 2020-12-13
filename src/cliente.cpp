@@ -15,8 +15,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PORT 21
-#define MSG_MAX_SIZE 1000
+#define PORT 7896
+#define MSG_MAX_SIZE 1024
 
 class TCP_Client {
  private:
@@ -27,7 +27,7 @@ class TCP_Client {
   void SetServerAddr()
   {
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     server_addr.sin_port = htons(PORT);
   }
 
@@ -59,9 +59,43 @@ class TCP_Client {
     std::cout << "Connected to Server\n";
   }
 
-  void SendCommand(const std::string& msg)
+  void SendMessage(const std::string& msg)
   {
     send(client_fd, msg.data(), msg.size(), 0);
+  }
+
+  bool SendFile(const std::string& filename)
+  {
+    FILE *fp = fopen(("../cliente/" + filename).c_str(), "r");
+    if (fp == NULL)
+    {
+      perror("Error in send file");
+      return false;
+    }
+
+    SendMessage("send_file " + filename);
+
+    // Verifica se tá tudo ok para enviar o arquivo
+    if (Receive() == "Error")
+      return false;
+
+    // Envia a quantidade de blocos de 1024 bytes do arquivo
+    long size;
+    fseek(fp , 0 , SEEK_END);
+    size = ftell(fp);
+    size = (size + 1023) / 1024;
+    rewind(fp);
+    SendMessage(std::to_string(size));
+
+    for (int i = 0; i < size; ++i)
+    {
+      fread(buffer, sizeof(char), 1024, fp);
+      send(client_fd, buffer, sizeof(buffer), 0);
+      memset(buffer, 0, sizeof(buffer));
+    }
+
+    fclose(fp);
+    return true;
   }
 
   std::string Receive()
@@ -88,9 +122,16 @@ int main()
 
     if (command == "quit")
       exit = true;
+    else if (command == "send_file")
+    {
+      std::string filename;
+      ss >> filename;
+      if (client.SendFile(filename))
+        std::cout << client.Receive() << std::endl;
+    }
     else
     {
-      client.SendCommand(in);
+      client.SendMessage(in);
       std::cout << client.Receive() << std::endl;
     }
   }

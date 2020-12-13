@@ -15,8 +15,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PORT 21
-#define MSG_MAX_SIZE 1000
+#define PORT 7896
+#define MSG_MAX_SIZE 1024
 
 // Reference: https://www.bogotobogo.com/cplusplus/sockets_server_client.php
 // https://www.geeksforgeeks.org/socket-programming-cc/
@@ -169,12 +169,16 @@ class TCP_Server {
     }
   }
 
-  void List()
+  void List(const std::string &name)
   {
     char temp_buffer[100] = "";
-    std::string command = "ls ../servidor";
+    std::string command = "ls ../servidor/";
 
-    fpipe = (FILE*) popen(command.c_str(), "r");
+    if (name.empty())
+      fpipe = (FILE*) popen(command.c_str(), "r");
+    else
+      fpipe = (FILE*) popen((command + name).c_str(), "r");
+
     if (fpipe)
     {
       while (!feof(fpipe))
@@ -186,7 +190,11 @@ class TCP_Server {
 
       buffer[strlen(buffer) - 1] = '\0';
       std::string output(buffer);
-      Send(output);
+
+      if (output == "")
+        Send("Empty");
+      else
+        Send(output);
 
       memset(buffer, 0, sizeof(buffer));
       pclose(fpipe);
@@ -220,6 +228,32 @@ class TCP_Server {
       }
     }
   }
+
+  void ReceiveFile(const std::string& filename)
+  {
+    FILE *fp = fopen(("../servidor/" + filename).c_str(), "w");
+
+    // Checa se deu erro ou se o arquivo já existe na pasta do servidor
+    if (fp == NULL)
+      Send("Error");
+    else
+    {
+      Send("Ok");
+      Receive();
+      int size = stoi(msg);
+
+      for (int i = 0; i < size; ++i)
+      {
+        recv(client_fd, buffer, sizeof(buffer), 0);
+        fwrite(buffer, sizeof(char), 1024, fp);
+        memset(buffer, 0, sizeof(buffer));
+      }
+
+      fclose(fp);
+    }
+
+    Send("File received successfully");
+  }
 };
 
 int main()
@@ -249,11 +283,13 @@ int main()
     }
     else if (command == "ls")
     {
-      server.List();
+      ss >> name;
+      server.List(name);
     }
     else if (command == "send_file")
     {
-      std::cout << "send_file\n";
+      ss >> name;
+      server.ReceiveFile(name);
     }
     else if (command == "remove_file")
     {
@@ -262,6 +298,8 @@ int main()
     }
     else
       server.Send("Unknown command");
+
+    name.clear();
   }
 
   std::cout << "Connection broken" << std::endl;
