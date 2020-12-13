@@ -18,10 +18,6 @@
 #define PORT 7896
 #define MSG_MAX_SIZE 1024
 
-// Reference: https://www.bogotobogo.com/cplusplus/sockets_server_client.php
-// https://www.geeksforgeeks.org/socket-programming-cc/
-// https://idiotdeveloper.com/file-transfer-using-tcp-socket-in-c/
-
 class TCP_Server {
  private:
   int server_fd, client_fd;
@@ -29,7 +25,7 @@ class TCP_Server {
   char buffer[MSG_MAX_SIZE];
   std::string msg = "";
 
-  FILE *fpipe;
+  FILE *fpipe;  // Usado para executar os comandos
 
   void SetAddr()
   {
@@ -92,13 +88,13 @@ class TCP_Server {
     std::cout << "Connection established\n";
   }
 
-  void Send(const std::string& message)
+  void SendMessage(const std::string& message)
   {
     send(client_fd, message.data(), message.size(), 0);
   }
 
   // Salva a mensagem em uma string e retorna o tamanho da mensagem
-  int Receive()
+  int ReceiveMessage()
   {
     int msg_size = recv(client_fd, buffer, sizeof(buffer), 0);
     msg = buffer;
@@ -116,7 +112,7 @@ class TCP_Server {
     std::string command = "mkdir ../servidor/";
 
     if (name.empty())
-      Send("Incomplete command");
+      SendMessage("Incomplete command");
     else
     {
       fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
@@ -126,12 +122,12 @@ class TCP_Server {
           fgets(buffer, sizeof(buffer), fpipe);
 
         if (strlen(buffer) == 0)
-          Send("Directory successfully created");
-        else
+          SendMessage("Directory successfully created");
+        else  // Caso ocorra algum erro, este erro é retornado p/ o cliente
         {
           buffer[strlen(buffer) - 1] = '\0';
           std::string output(buffer);
-          Send(output);
+          SendMessage(output);
         }
 
         memset(buffer, 0, sizeof(buffer));
@@ -145,7 +141,7 @@ class TCP_Server {
     std::string command = "rm -r ../servidor/";
 
     if (name.empty())
-      Send("Incomplete command");
+      SendMessage("Incomplete command");
     else
     {
       fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
@@ -155,12 +151,12 @@ class TCP_Server {
           fgets(buffer, sizeof(buffer), fpipe);
 
         if (strlen(buffer) == 0)
-          Send("Directory successfully removed");
-        else
+          SendMessage("Directory successfully removed");
+        else  // Caso ocorra algum erro, este erro é retornado p/ o cliente
         {
           buffer[strlen(buffer) - 1] = '\0';
           std::string output(buffer);
-          Send(output);
+          SendMessage(output);
         }
 
         memset(buffer, 0, sizeof(buffer));
@@ -174,9 +170,9 @@ class TCP_Server {
     char temp_buffer[100] = "";
     std::string command = "ls ../servidor/";
 
-    if (name.empty())
+    if (name.empty()) // Lista arquivos da pasta padrão do servidor
       fpipe = (FILE*) popen(command.c_str(), "r");
-    else
+    else  // Lista arquivos de alguma pasta existente no servidor
       fpipe = (FILE*) popen((command + name).c_str(), "r");
 
     if (fpipe)
@@ -192,9 +188,9 @@ class TCP_Server {
       std::string output(buffer);
 
       if (output == "")
-        Send("Empty");
+        SendMessage("Empty");
       else
-        Send(output);
+        SendMessage(output);
 
       memset(buffer, 0, sizeof(buffer));
       pclose(fpipe);
@@ -205,7 +201,7 @@ class TCP_Server {
   {
     std::string command = "rm ../servidor/";
     if (name.empty())
-      Send("Incomplete command");
+      SendMessage("Incomplete command");
     else
     {
       fpipe = (FILE*) popen((command + name + " 2>&1").c_str(), "r");
@@ -215,12 +211,12 @@ class TCP_Server {
           fgets(buffer, sizeof(buffer), fpipe);
 
         if (strlen(buffer) == 0)
-          Send(name + " successfully removed");
-        else
+          SendMessage(name + " successfully removed");
+        else  // Caso ocorra algum erro, este erro é retornado p/ o cliente
         {
           buffer[strlen(buffer) - 1] = '\0';
           std::string output(buffer);
-          Send(output);
+          SendMessage(output);
         }
 
         memset(buffer, 0, sizeof(buffer));
@@ -235,11 +231,12 @@ class TCP_Server {
 
     // Checa se deu erro ou se o arquivo já existe na pasta do servidor
     if (fp == NULL)
-      Send("Error");
+      SendMessage("Error");
     else
     {
-      Send("Ok");
-      Receive();
+      SendMessage("Ok");
+      // Recebe a mensagem indicando o tamanho de blocos de 1024 bytes do arquivo
+      ReceiveMessage();
       int size = stoi(msg);
 
       for (int i = 0; i < size; ++i)
@@ -252,7 +249,7 @@ class TCP_Server {
       fclose(fp);
     }
 
-    Send("File received successfully");
+    SendMessage("File received successfully");
   }
 };
 
@@ -266,38 +263,23 @@ int main()
   server.Accept();
 
   // Enquanto o cliente estiver conectado
-  while (server.Receive())
+  while (server.ReceiveMessage())
   {
     std::stringstream ss(server.GetMessage());
-    ss >> command;
+    ss >> command >> name;
 
     if(command == "make_dir")
-    {
-      ss >> name;
       server.MakeDir(name);
-    }
     else if (command == "remove_dir")
-    {
-      ss >> name;
       server.RemoveDir(name);
-    }
     else if (command == "ls")
-    {
-      ss >> name;
       server.List(name);
-    }
     else if (command == "send_file")
-    {
-      ss >> name;
       server.ReceiveFile(name);
-    }
     else if (command == "remove_file")
-    {
-      ss >> name;
       server.RemoveFile(name);
-    }
     else
-      server.Send("Unknown command");
+      server.SendMessage("Unknown command");
 
     name.clear();
   }

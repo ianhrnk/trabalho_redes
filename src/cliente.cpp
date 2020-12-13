@@ -73,9 +73,10 @@ class TCP_Client {
       return false;
     }
 
+    // Envia a requisição de transferência do arquivo
     SendMessage("send_file " + filename);
 
-    // Verifica se tá tudo ok para enviar o arquivo
+    // Verifica se tá tudo ok para poder enviar
     if (Receive() == "Error")
       return false;
 
@@ -87,6 +88,7 @@ class TCP_Client {
     rewind(fp);
     SendMessage(std::to_string(size));
 
+    // Envia blocos de 1024 bytes
     for (int i = 0; i < size; ++i)
     {
       fread(buffer, sizeof(char), 1024, fp);
@@ -120,8 +122,11 @@ int main()
     std::stringstream ss(in);
     ss >> command;
 
-    if (command == "quit")
-      exit = true;
+    if (command != "quit" && command != "send_file")
+    {
+      client.SendMessage(in);
+      std::cout << client.Receive() << std::endl;
+    }
     else if (command == "send_file")
     {
       std::string filename;
@@ -130,10 +135,7 @@ int main()
         std::cout << client.Receive() << std::endl;
     }
     else
-    {
-      client.SendMessage(in);
-      std::cout << client.Receive() << std::endl;
-    }
+      exit = true;
   }
 
   return 0;
